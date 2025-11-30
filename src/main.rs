@@ -45,6 +45,33 @@ fn main() {
                 println!("exit captured, stopping emulation");
             } else {
                 println!("unknown syscall '{syscall}' captured, stopping emulation");
+                emu.emu_stop().unwrap();
+            }
+        })
+        .unwrap();
+
+    // 0xcc is the INT3 debuggin code
+    // https://en.wikipedia.org/wiki/INT_(x86_instruction)#INT3
+    engine.mem_write(start, &[0xcc]).unwrap();
+    engine
+        .add_intr_hook(|emu, _| {
+            println!("Debug interruption found!");
+            let int_ip = emu.pc_read().unwrap() - 1;
+            let orig_byte = emu.mem_read_as_vec(int_ip, 1).unwrap();
+            // make sure it's the CC byte
+            if orig_byte[0] == 0xCC {
+                // 0xb8 is the original byte in the hello.out binary
+                emu.mem_write(start, &[0xb8]).unwrap();
+                emu.set_pc(int_ip).unwrap();
+                // we need to invalidate the cache to make sure the code changes are applied
+                // https://github.com/unicorn-engine/unicorn/wiki/FAQ#editing-an-instruction-doesnt-take-effecthooks-added-during-emulation-are-not-called
+                emu.ctl_remove_cache(0, 8 * 1024 * 1024).unwrap();
+            } else {
+                println!(
+                    "Unknown interruption instr 0x{:x} stopping emu",
+                    orig_byte[0]
+                );
+                emu.emu_stop().unwrap();
             }
         })
         .unwrap();
