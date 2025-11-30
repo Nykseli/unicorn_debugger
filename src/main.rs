@@ -25,9 +25,26 @@ fn main() {
     engine
         .add_insn_sys_hook(unicorn_engine::X86Insn::SYSCALL, start, 0, |emu| {
             let syscall = emu.reg_read(RegisterX86::RAX).unwrap();
-            if syscall == 60 {
+
+            if syscall == 1 {
+                let fd = emu.reg_read(RegisterX86::RDI).unwrap();
+                let data_ptr = emu.reg_read(RegisterX86::RSI).unwrap();
+                let data_len = emu.reg_read(RegisterX86::RDX).unwrap();
+                let data_from_mem = emu.mem_read_as_vec(data_ptr, data_len as usize).unwrap();
+
+                if fd == 1 {
+                    print!("{}", String::from_utf8(data_from_mem).unwrap())
+                } else if fd == 2 {
+                    eprint!("{}", String::from_utf8(data_from_mem).unwrap())
+                } else {
+                    println!("cannot write to fd '{fd}'");
+                    emu.emu_stop().unwrap();
+                }
+            } else if syscall == 60 {
                 emu.emu_stop().unwrap();
                 println!("exit captured, stopping emulation");
+            } else {
+                println!("unknown syscall '{syscall}' captured, stopping emulation");
             }
         })
         .unwrap();
