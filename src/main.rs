@@ -8,7 +8,7 @@ mod program;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let program = Program::new("asm/loop.out", 0x0000000000401000);
+    let program = Program::new("os-image.bin", 0x7c00);
     let mut engine = Engine::new(program);
     if args.len() > 1 && args[1] == "-d" {
         let mut debug = Debugger::new(engine);
