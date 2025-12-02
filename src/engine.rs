@@ -203,7 +203,8 @@ impl<'a> Engine<'a> {
                 let has_break = emu.get_data().get_break(addr).is_some();
                 if has_break {
                     let is_intr = emu.get_data().get_break(addr).unwrap().intr;
-                    if is_intr {
+                    if !is_intr {
+                        println!("breaking at [{fp}]");
                         emu.emu_stop().unwrap();
                     }
                     let ebreak = emu.get_data_mut().get_break_mut(addr).unwrap();
@@ -234,8 +235,6 @@ impl<'a> Engine<'a> {
 
     /// Continue run where enigne was stopped
     pub fn cont(&mut self) {
-        self.engine
-            .emu_start(self.engine.pc_read().unwrap(), 8192, 0, 0)
-            .unwrap()
+        self.start();
     }
 }

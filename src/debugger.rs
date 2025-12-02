@@ -32,8 +32,14 @@ impl<'a> Debugger<'a> {
 
     fn add_break(&mut self, cmd: &str) {
         let addr = cmd.split_whitespace().nth(1).unwrap();
-        let addr = u64::from_str_radix(addr, 16).unwrap();
-        println!("Adding break: {:016x}", addr);
+        let addr = if let Some(addrs) = addr.split_once(':') {
+            let segment = u64::from_str_radix(addrs.0, 16).unwrap();
+            let offset = u64::from_str_radix(addrs.1, 16).unwrap();
+            segment * 16 + offset
+        } else {
+            u64::from_str_radix(addr, 16).unwrap()
+        };
+
         self.engine.add_break(addr);
     }
 
