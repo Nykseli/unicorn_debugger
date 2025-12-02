@@ -60,17 +60,41 @@ impl<'a> Engine<'a> {
         self.engine.ctl_remove_cache(0, 8 * 1024 * 1024).unwrap();
     }
 
+    fn far_ip(&self) -> u64 {
+        let ip = self.engine.reg_read(RegisterX86::IP).unwrap();
+        let cs = self.engine.reg_read(RegisterX86::CS).unwrap();
+        cs * 16 + ip
+    }
+
     pub fn new(program: Program) -> Self {
         let data = EngineData::new(program);
         let mut engine = Unicorn::new_with_data(Arch::X86, Mode::MODE_64, data).unwrap();
         engine.mem_map(0, 8 * 1024 * 1024, Prot::ALL).unwrap();
         let program = engine.get_data().program.clone();
 
-        // for section in program.sections() {
-        //     if let Some(data) = program.section_data(section) {
-        //         engine.mem_write(section.sh_addr, data).unwrap();
-        //     }
-        // }
+        // the start is a far pointer segment thingy so we need to multiply it with 16
+        engine
+            .mem_write(program.start() * 16, program.data())
+            .unwrap();
+
+        engine
+            .reg_write(RegisterX86::IP, program.header().initial_ip as u64)
+            .unwrap();
+        engine
+            .reg_write(RegisterX86::SP, program.header().initial_sp as u64)
+            .unwrap();
+        engine
+            .reg_write(
+                RegisterX86::CS,
+                program.header().initial_cs as u64 + program.start(),
+            )
+            .unwrap();
+        engine
+            .reg_write(
+                RegisterX86::SS,
+                program.header().initial_ss as u64 + program.start(),
+            )
+            .unwrap();
 
         engine
             .add_insn_sys_hook(
@@ -108,7 +132,14 @@ impl<'a> Engine<'a> {
             .unwrap();
 
         engine
-            .add_code_hook(program.start(), 0, |emu, addr, _len| {
+            .add_code_hook(program.start(), 0, |emu, addr, len| {
+                let decoder = yaxpeax_x86::real_mode::InstDecoder::default();
+                let inst = decoder
+                    .decode_slice(&emu.mem_read_as_vec(addr, len as usize).unwrap())
+                    .unwrap();
+                println!("code exec: ({addr:x}): {}", inst.to_string());
+                // NOTE: remove this to keep running the VM, it might crash though!
+                emu.emu_stop().unwrap();
                 let has_break = emu.get_data().get_break(addr).is_some();
                 if has_break {
                     let is_intr = emu.get_data().get_break(addr).unwrap().intr;
@@ -133,9 +164,7 @@ impl<'a> Engine<'a> {
     }
 
     pub fn start(&mut self) {
-        self.engine
-            .emu_start(self.engine.get_data().start(), 8192, 0, 0)
-            .unwrap()
+        self.engine.emu_start(self.far_ip(), 8192, 0, 0).unwrap()
     }
 
     // TODO: proper function for getting CPU info

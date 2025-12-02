@@ -26,6 +26,10 @@ impl Program {
         self.start
     }
 
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
     pub fn header(&self) -> &Header {
         &self.header
     }
@@ -38,11 +42,11 @@ pub struct Header {
     header_size: u16,
     min_allocation: u16,
     max_allocation: u16,
-    initial_ss: u16,
-    initial_sp: u16,
+    pub initial_ss: u16,
+    pub initial_sp: u16,
     checksum: u16,
-    initial_ip: u16,
-    initial_cs: u16,
+    pub initial_ip: u16,
+    pub initial_cs: u16,
     relocation_table: u16,
     overlay: u16,
 }
@@ -76,7 +80,7 @@ mod tests {
     #[test]
     fn parse_header() {
         let header: [u8; 0x1D] = [
-            0x4D, 0x5A, 0x56, 0x00, 0x84, 0x00, 0x00, 0x00, 0x20, 0x00, 0xF9, 0x02, 0xFF, 0xFF, 0x82, 0x10, 
+            0x4D, 0x5A, 0x56, 0x00, 0x84, 0x00, 0x00, 0x00, 0x20, 0x00, 0xF9, 0x02, 0xFF, 0xFF, 0x82, 0x10,
             0x80, 0x00, 0x00, 0x00, 0x10, 0x00, 0x2B, 0x10, 0x1E, 0x00, 0x00, 0x00, 0x01,
         ];
 
