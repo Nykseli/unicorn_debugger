@@ -124,6 +124,7 @@ struct EngineData {
     /// address -> break data
     breaks: HashMap<u64, EngineBreak>,
     exited: bool,
+    verbose: bool,
 }
 
 impl EngineData {
@@ -132,6 +133,7 @@ impl EngineData {
             program: Rc::new(program),
             breaks: HashMap::new(),
             exited: false,
+            verbose: false,
         }
     }
 
@@ -202,12 +204,15 @@ impl<'a> Engine<'a> {
 
         engine
             .add_code_hook(program.start(), 0, |emu, addr, len| {
-                let decoder = yaxpeax_x86::real_mode::InstDecoder::default();
-                let inst = decoder
-                    .decode_slice(&emu.mem_read_as_vec(addr, len as usize).unwrap())
-                    .unwrap();
                 let fp = FarPointer::read_engine(&emu);
-                println!("code exec: [{fp}]: {}", inst.to_string());
+                if emu.get_data().verbose {
+                    let decoder = yaxpeax_x86::real_mode::InstDecoder::default();
+                    let inst = decoder
+                        .decode_slice(&emu.mem_read_as_vec(addr, len as usize).unwrap())
+                        .unwrap();
+                    println!("code exec: [{fp}]: {}", inst.to_string());
+                }
+
                 let has_break = emu.get_data().get_break(addr).is_some();
                 if has_break {
                     let is_intr = emu.get_data().get_break(addr).unwrap().intr;
@@ -256,6 +261,10 @@ impl<'a> Engine<'a> {
             .unwrap();
 
         Self { engine }
+    }
+
+    pub fn set_verbose(&mut self, verbose: bool) {
+        self.engine.get_data_mut().verbose = verbose;
     }
 
     pub fn exited(&self) -> bool {

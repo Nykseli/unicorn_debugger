@@ -62,6 +62,10 @@ impl<'a> Debugger<'a> {
             self.next();
         } else if cmd == "c" || cmd == "continue" {
             self.cont();
+        } else if cmd == "logon" {
+            self.engine.set_verbose(true);
+        } else if cmd == "logoff" {
+            self.engine.set_verbose(false);
         } else if cmd.starts_with("b ") || cmd.starts_with("break ") {
             self.add_break(cmd);
         } else {
