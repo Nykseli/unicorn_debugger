@@ -1,19 +1,22 @@
-use std::env;
+use clap::Parser;
 
 use crate::{debugger::Debugger, engine::Engine, program::Program};
 
+mod cli;
 mod debugger;
 mod engine;
 mod program;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let program = Program::new("TXLIST.EXE", 0x1000);
+    let args = cli::CliArgs::parse();
+    let program = Program::new(&args.program_path, 0x1000);
     let mut engine = Engine::new(program);
-    if args.len() > 1 && args[1] == "-d" {
+    engine.set_verbose(args.verbose);
+
+    if args.debug_mode() {
         let mut debug = Debugger::new(engine);
-        if args.len() > 2 {
-            debug.run_file(&args[2]);
+        if let Some(file) = &args.debug_file {
+            debug.run_file(file);
         } else {
             debug.repl();
         }
