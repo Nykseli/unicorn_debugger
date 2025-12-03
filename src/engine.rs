@@ -169,9 +169,7 @@ impl<'a> Engine<'a> {
         // the start is a far pointer segment thingy so we need to multiply it with 16
         let start_segment = program.start() * 16;
         let psp_segment = start_segment - 256;
-        engine
-            .mem_write(start_segment, program.data())
-            .unwrap();
+        engine.mem_write(start_segment, program.data()).unwrap();
         // TODO: create actual PSP
         let psp_data: [u8; 256] = ['A' as u8; 256];
         engine.mem_write(psp_segment, &psp_data).unwrap();
@@ -210,8 +208,6 @@ impl<'a> Engine<'a> {
                     .unwrap();
                 let fp = FarPointer::read_engine(&emu);
                 println!("code exec: [{fp}]: {}", inst.to_string());
-                // NOTE: remove this to keep running the VM, it might crash though!
-                emu.emu_stop().unwrap();
                 let has_break = emu.get_data().get_break(addr).is_some();
                 if has_break {
                     let is_intr = emu.get_data().get_break(addr).unwrap().intr;
@@ -221,6 +217,40 @@ impl<'a> Engine<'a> {
                     }
                     let ebreak = emu.get_data_mut().get_break_mut(addr).unwrap();
                     ebreak.intr = !ebreak.intr;
+                }
+            })
+            .unwrap();
+
+        engine
+            .add_intr_hook(|emu, num| {
+                let cpu = Cpu::read_engine(&emu);
+                if num == 0x21 {
+                    let ah = cpu.ax >> 8;
+                    if ah == 0x40 {
+                        let ds = cpu.ds;
+                        let dx = cpu.dx;
+                        let addr = ds * 16 + dx;
+                        let data = emu.mem_read_as_vec(addr, cpu.cx as usize).unwrap();
+                        println!(
+                            "Write to fd '{}', string: '{}'",
+                            cpu.bx,
+                            String::from_utf8_lossy(&data)
+                        );
+                    } else if ah == 0x4c {
+                        let al = cpu.ax & 0xff;
+                        println!("Program terminating with code '0x{al:x}', exiting...");
+                        emu.get_data_mut().exited = true;
+                        emu.emu_stop().unwrap();
+                    } else {
+                        println!("Unimplemented ah for 0x21: 0x{ah:x}, exiting...");
+                        emu.get_data_mut().exited = true;
+                        emu.emu_stop().unwrap();
+                        return;
+                    }
+                } else {
+                    println!("Unimplemented interrupt 0x{num:x}, exiting...");
+                    emu.get_data_mut().exited = true;
+                    emu.emu_stop().unwrap();
                 }
             })
             .unwrap();
