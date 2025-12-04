@@ -1,4 +1,4 @@
-use crate::program::Program;
+use crate::program::{PSP, Program};
 use std::{collections::HashMap, fmt::Display, rc::Rc};
 use unicorn_engine::{Arch, Mode, Prot, RegisterX86, Unicorn};
 
@@ -207,9 +207,10 @@ impl<'a> Engine<'a> {
         let start_segment = program.start() * 16;
         let psp_segment = start_segment - 256;
         engine.mem_write(start_segment, program.data()).unwrap();
-        // TODO: create actual PSP
-        let psp_data: [u8; 256] = ['A' as u8; 256];
-        engine.mem_write(psp_segment, &psp_data).unwrap();
+
+        let psp = &PSP::new(0x0, [0x0; 5]);
+        let psp_data: &[u8] = psp.into();
+        engine.mem_write(psp_segment, psp_data).unwrap();
 
         engine
             .reg_write(RegisterX86::IP, program.header().initial_ip as u64)
