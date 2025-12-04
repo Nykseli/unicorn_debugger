@@ -17,6 +17,11 @@ enum Command {
     Break(String),
 }
 
+enum ParseVal {
+    Comment,
+    Command(Command),
+}
+
 struct Ast {
     commands: Vec<Command>,
 }
@@ -25,34 +30,50 @@ impl Ast {
     fn new(file: &str) -> Self {
         let mut commands = Vec::new();
 
-        for (idx, line) in file.lines().enumerate() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
+        let mut idx = 0;
+        let lines: Vec<&str> = file.lines().collect();
+        while let Some((value, next_idx)) = Self::parse_command(idx, &lines) {
+            if let ParseVal::Command(command) = value {
+                commands.push(command);
             }
-
-            if line == "q" || line == "quit" || line == "exit" {
-                commands.push(Command::Quit);
-            } else if line == "p" || line == "print" {
-                commands.push(Command::Print);
-            } else if line == "r" || line == "run" {
-                commands.push(Command::Run);
-            } else if line == "n" || line == "next" {
-                commands.push(Command::Next);
-            } else if line == "c" || line == "continue" {
-                commands.push(Command::Continue);
-            } else if line == "logon" {
-                commands.push(Command::Logon);
-            } else if line == "logoff" {
-                commands.push(Command::Logoff);
-            } else if line.starts_with("b ") || line.starts_with("break ") {
-                commands.push(Command::Break(line.into()));
-            } else {
-                panic!("Unknown command {line} on line {}", idx + 1);
-            }
+            idx = next_idx;
         }
 
         Self { commands }
+    }
+
+    fn parse_command(idx: usize, lines: &[&str]) -> Option<(ParseVal, usize)> {
+        if idx >= lines.len() {
+            return None;
+        }
+
+        let line = lines[idx];
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return Some((ParseVal::Comment, idx + 1));
+        }
+
+        let (command, size) = if line == "q" || line == "quit" || line == "exit" {
+            (Command::Quit, 1)
+        } else if line == "p" || line == "print" {
+            (Command::Print, 1)
+        } else if line == "r" || line == "run" {
+            (Command::Run, 1)
+        } else if line == "n" || line == "next" {
+            (Command::Next, 1)
+        } else if line == "c" || line == "continue" {
+            (Command::Continue, 1)
+        } else if line == "logon" {
+            (Command::Logon, 1)
+        } else if line == "logoff" {
+            (Command::Logoff, 1)
+        } else if line.starts_with("b ") || line.starts_with("break ") {
+            (Command::Break(line.into()), 1)
+        } else {
+            panic!("Unknown command {line} on line {}", idx + 1);
+        };
+
+        Some((ParseVal::Command(command), idx + size))
     }
 }
 
