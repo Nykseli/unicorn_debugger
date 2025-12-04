@@ -123,6 +123,8 @@ pub struct EngineData {
     program: Rc<Program>,
     /// address -> break data
     breaks: HashMap<u64, EngineBreak>,
+    /// started -> addr
+    while_break: Option<(bool, u64)>,
     exited: bool,
     verbose: bool,
 }
@@ -134,6 +136,7 @@ impl EngineData {
             breaks: HashMap::new(),
             exited: false,
             verbose: false,
+            while_break: None,
         }
     }
 
@@ -223,9 +226,16 @@ impl<'a> Engine<'a> {
                     if !is_intr {
                         println!("breaking at [{fp}]");
                         emu.emu_stop().unwrap();
+                        if emu.get_data().while_break.is_some_and(|wb| wb.1 == addr) {
+                            emu.get_data_mut().while_break = Some((true, addr));
+                        }
                     }
                     let ebreak = emu.get_data_mut().get_break_mut(addr).unwrap();
                     ebreak.intr = !ebreak.intr;
+                } else if emu.get_data().while_break.is_some_and(|wb| wb.0) {
+                    println!("stopping after while break at [{fp}]");
+                    emu.get_data_mut().while_break = None;
+                    emu.emu_stop().unwrap();
                 }
             })
             .unwrap();
@@ -277,6 +287,11 @@ impl<'a> Engine<'a> {
 
     pub fn add_break(&mut self, addr: u64) {
         self.engine.get_data_mut().add_break(EngineBreak::new(addr));
+    }
+
+    pub fn add_while_break(&mut self, addr: u64) {
+        self.engine.get_data_mut().add_break(EngineBreak::new(addr));
+        self.engine.get_data_mut().while_break = Some((false, addr))
     }
 
     pub fn start(&mut self) {

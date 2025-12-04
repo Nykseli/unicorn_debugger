@@ -206,7 +206,7 @@ impl<'a> Debugger<'a> {
                 Command::Logoff => self.engine.set_verbose(false),
                 Command::Break(cmd) => self.add_break(cmd),
                 Command::WhileBreak { addr, commands } => {
-                    self.engine.add_break(*addr);
+                    self.engine.add_while_break(*addr);
                     loop {
                         self.cont();
                         let ip = FarPointer::read_engine(self.engine.engine());
