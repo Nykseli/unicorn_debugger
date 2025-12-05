@@ -295,6 +295,23 @@ impl<'a> Engine<'a> {
                             cpu.bx,
                             String::from_utf8_lossy(&data)
                         );
+                    } else if ah == 0x44 {
+                        let al = cpu.ax & 0xff;
+                        if cpu.bx > 4 {
+                            println!("IOCTL functions are only implemented for default file handles. Exiting..");
+                            emu.get_data_mut().exited = true;
+                            emu.emu_stop().unwrap();
+                            return;
+                        }
+
+                        if al == 0 {
+                            // Mark device as character device
+                            emu.reg_write(RegisterX86::DX, 0x80).unwrap();
+                        } else {
+                            println!("Unimplemented IOCTL function {al:x}");
+                            emu.get_data_mut().exited = true;
+                            emu.emu_stop().unwrap();
+                        }
                     } else if ah == 0x4a {
                         // Dosbox is doing this so lets do it too for now?
                         if cpu.ax == 0x4a01 || cpu.ax == 0x4a02 {
