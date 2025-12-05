@@ -12,8 +12,16 @@ pub struct Program {
 impl Program {
     pub fn new(path: &str, start: u64) -> Self {
         let mut data = read(path).unwrap();
-        let header = Header::new(&mut data);
+        let header = Header::new(&data);
         data.drain(0..(header.header_size as usize * 16));
+        for reloc in &header.relocation_table {
+            let segment = reloc.segment as u64;
+            let offset = reloc.offset as u64;
+            let addr = (segment * 16 + offset) as usize;
+            let bytes = (start as u16).to_le_bytes();
+            data[addr] += bytes[0];
+            data[addr + 1] += bytes[1];
+        }
 
         Self {
             data,
@@ -35,10 +43,16 @@ impl Program {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Relocation {
+    offset: u16,
+    segment: u16,
+}
+
 pub struct Header {
     last_page_bytes: u16,
     pages_in_file: u16,
-    relocations: u16,
+    relocation_rows: u16,
     header_size: u16,
     min_allocation: u16,
     max_allocation: u16,
@@ -47,16 +61,29 @@ pub struct Header {
     checksum: u16,
     pub initial_ip: u16,
     pub initial_cs: u16,
-    relocation_table: u16,
+    relocation_addr: u16,
+    pub relocation_table: Vec<Relocation>,
     overlay: u16,
 }
 
 impl Header {
     pub fn new(bytes: &[u8]) -> Header {
+        let relocations_count = LittleEndian::read_u16(&bytes[6..8]);
+        let mut relocations = vec![];
+
+        // This should really be worked out using relocation_addr, but eh
+        for n in 0..(relocations_count as usize) {
+            let n = n * 4;
+            relocations.push(Relocation {
+                offset: LittleEndian::read_u16(&bytes[(28 + n)..(30 + n)]),
+                segment: LittleEndian::read_u16(&bytes[(30 + n)..(32 + n)]),
+            })
+        }
+
         Header {
             last_page_bytes: LittleEndian::read_u16(&bytes[2..4]),
             pages_in_file: LittleEndian::read_u16(&bytes[4..6]),
-            relocations: LittleEndian::read_u16(&bytes[6..8]),
+            relocation_rows: relocations_count,
             header_size: LittleEndian::read_u16(&bytes[8..10]),
             min_allocation: LittleEndian::read_u16(&bytes[10..12]),
             max_allocation: LittleEndian::read_u16(&bytes[12..14]),
@@ -65,7 +92,8 @@ impl Header {
             checksum: LittleEndian::read_u16(&bytes[18..20]),
             initial_ip: LittleEndian::read_u16(&bytes[20..22]),
             initial_cs: LittleEndian::read_u16(&bytes[22..24]),
-            relocation_table: LittleEndian::read_u16(&bytes[24..26]),
+            relocation_addr: LittleEndian::read_u16(&bytes[24..26]),
+            relocation_table: relocations,
             overlay: LittleEndian::read_u16(&bytes[26..28]),
         }
     }
@@ -79,33 +107,48 @@ mod tests {
 
     #[test]
     fn parse_header() {
-        let header: [u8; 0x1D] = [
-            0x4D, 0x5A, 0x56, 0x00, 0x84, 0x00, 0x00, 0x00, 0x20, 0x00, 0xF9, 0x02, 0xFF, 0xFF,
-            0x82, 0x10, 0x80, 0x00, 0x00, 0x00, 0x10, 0x00, 0x2B, 0x10, 0x1E, 0x00, 0x00, 0x00,
-            0x01,
+        let header: [u8; 0xC4] = [
+            0x4D, 0x5A, 0x70, 0x00, 0x85, 0x00, 0x2A, 0x00, 0x20, 0x00, 0xF9, 0x02, 0xFF, 0xFF,
+            0x3E, 0x11, 0x00, 0x20, 0x00, 0x00, 0xD2, 0xBC, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00,
+            0x34, 0x31, 0x00, 0x00, 0x06, 0x31, 0x00, 0x00, 0xB0, 0x6B, 0x00, 0x00, 0x87, 0x6B,
+            0x00, 0x00, 0xBE, 0x78, 0x00, 0x00, 0xAA, 0x83, 0x00, 0x00, 0x68, 0x88, 0x00, 0x00,
+            0x3A, 0x88, 0x00, 0x00, 0x5E, 0x8E, 0x00, 0x00, 0xE5, 0x8D, 0x00, 0x00, 0x46, 0x8F,
+            0x00, 0x00, 0xF8, 0x8E, 0x00, 0x00, 0x41, 0x92, 0x00, 0x00, 0x73, 0x94, 0x00, 0x00,
+            0x40, 0x93, 0x00, 0x00, 0x07, 0x93, 0x00, 0x00, 0xE0, 0x95, 0x00, 0x00, 0x5D, 0x95,
+            0x00, 0x00, 0x7B, 0x99, 0x00, 0x00, 0x66, 0x99, 0x00, 0x00, 0x4D, 0x97, 0x00, 0x00,
+            0x9A, 0x96, 0x00, 0x00, 0xEA, 0x99, 0x00, 0x00, 0x69, 0x9E, 0x00, 0x00, 0x4E, 0x9E,
+            0x00, 0x00, 0xD8, 0xA3, 0x00, 0x00, 0x9F, 0xA3, 0x00, 0x00, 0xDA, 0xA4, 0x00, 0x00,
+            0x65, 0xA4, 0x00, 0x00, 0x50, 0xAB, 0x00, 0x00, 0x09, 0xAB, 0x00, 0x00, 0x75, 0xB1,
+            0x00, 0x00, 0xA2, 0xB4, 0x00, 0x00, 0x64, 0xB4, 0x00, 0x00, 0xA0, 0xB6, 0x00, 0x00,
+            0x21, 0xB6, 0x00, 0x00, 0xDD, 0xB7, 0x00, 0x00, 0xE0, 0xBC, 0x00, 0x00, 0xB9, 0xBD,
+            0x00, 0x00, 0xA0, 0xF5, 0x00, 0x00, 0x6E, 0x05, 0x00, 0x10, 0x7D, 0x01, 0x00, 0x10,
         ];
 
         let header = Header::new(&header);
 
         assert_eq!(
             header.last_page_bytes,
-            LittleEndian::read_u16(&[0x56, 0x00])
+            LittleEndian::read_u16(&[0x70, 0x00])
         );
-        assert_eq!(header.pages_in_file, LittleEndian::read_u16(&[0x84, 0x00]));
-        assert_eq!(header.relocations, LittleEndian::read_u16(&[0x00, 0x00]));
+        assert_eq!(header.pages_in_file, LittleEndian::read_u16(&[0x85, 0x00]));
+        assert_eq!(
+            header.relocation_rows,
+            LittleEndian::read_u16(&[0x2A, 0x00])
+        );
         assert_eq!(header.header_size, LittleEndian::read_u16(&[0x20, 0x00]));
         assert_eq!(header.min_allocation, LittleEndian::read_u16(&[0xf9, 0x02]));
         assert_eq!(header.max_allocation, LittleEndian::read_u16(&[0xff, 0xff]));
-        assert_eq!(header.initial_ss, LittleEndian::read_u16(&[0x82, 0x10]));
-        assert_eq!(header.initial_sp, LittleEndian::read_u16(&[0x80, 0x00]));
+        assert_eq!(header.initial_ss, LittleEndian::read_u16(&[0x3E, 0x11]));
+        assert_eq!(header.initial_sp, LittleEndian::read_u16(&[0x00, 0x20]));
         assert_eq!(header.checksum, LittleEndian::read_u16(&[0x00, 0x00]));
-        assert_eq!(header.initial_ip, LittleEndian::read_u16(&[0x10, 0x00]));
-        assert_eq!(header.initial_cs, LittleEndian::read_u16(&[0x2b, 0x10]));
+        assert_eq!(header.initial_ip, LittleEndian::read_u16(&[0xD2, 0xBC]));
+        assert_eq!(header.initial_cs, LittleEndian::read_u16(&[0x00, 0x00]));
         assert_eq!(
-            header.relocation_table,
-            LittleEndian::read_u16(&[0x1e, 0x00])
+            header.relocation_addr,
+            LittleEndian::read_u16(&[0x1C, 0x00])
         );
         assert_eq!(header.overlay, LittleEndian::read_u16(&[0x00, 0x00]));
+        assert!(header.relocation_table.len() == 42);
     }
 }
 
