@@ -208,7 +208,7 @@ impl<'a> Engine<'a> {
         let psp_segment = start_segment - 256;
         engine.mem_write(start_segment, program.data()).unwrap();
 
-        let psp = &PSP::new(0x0, 0x0);
+        let psp = &PSP::new(0x2000, 0x0);
         let psp_data: &[u8] = psp.into();
         engine.mem_write(psp_segment, psp_data).unwrap();
 
@@ -231,22 +231,22 @@ impl<'a> Engine<'a> {
             )
             .unwrap();
 
-        engine
-            .reg_write(RegisterX86::DS, psp_segment >> 4)
-            .unwrap();
-        engine
-            .reg_write(RegisterX86::ES, psp_segment >> 4)
-            .unwrap();
+        engine.reg_write(RegisterX86::DS, psp_segment >> 4).unwrap();
+        engine.reg_write(RegisterX86::ES, psp_segment >> 4).unwrap();
 
         engine
             .add_code_hook(program.start(), 0, |emu, addr, len| {
                 let fp = FarPointer::read_engine(&emu);
                 if emu.get_data().verbose {
                     let decoder = yaxpeax_x86::real_mode::InstDecoder::default();
-                    let inst = decoder
-                        .decode_slice(&emu.mem_read_as_vec(addr, len as usize).unwrap())
-                        .unwrap();
-                    println!("code exec: [{fp}]: {}", inst.to_string());
+                    let inst = if let Ok(inst) =
+                        decoder.decode_slice(&emu.mem_read_as_vec(addr, len as usize).unwrap())
+                    {
+                        inst.to_string()
+                    } else {
+                        "Unknown instruction".into()
+                    };
+                    println!("code exec: [{fp}]: {}", inst);
                 }
 
                 let has_break = emu.get_data().get_break(addr).is_some();
@@ -274,10 +274,15 @@ impl<'a> Engine<'a> {
                 let cpu = Cpu::read_engine(&emu);
                 if num == 0x21 {
                     let ah = cpu.ax >> 8;
-                    if ah == 0x25 {
+                    if ah == 0x19 {
+                        // 2 C drive, let's assume that we always have C drive
+                       emu.reg_write(RegisterX86::AL, 2).unwrap();
+                    } else if ah == 0x25 {
                         let al = cpu.ax & 0xff;
                         let handler_ptr = (cpu.ds * 16 + cpu.dx) as u32;
                         emu.mem_write(al * 4, &handler_ptr.to_le_bytes()).unwrap();
+                    } else if ah == 0x38 {
+                        println!("IGNORING COUNTRY DEPENDENT INFORMATION!!!!!")
                     } else if ah == 0x30 {
                         // TXLIST.EXE is checking for DOS version 2 so lets set the dos version to that for now
                         emu.reg_write(RegisterX86::AL, 2).unwrap();
@@ -295,6 +300,26 @@ impl<'a> Engine<'a> {
                             cpu.bx,
                             String::from_utf8_lossy(&data)
                         );
+                    } else if ah == 0x43 {
+                        let addr = cpu.ds * 16 +  cpu.dx;
+                        if cpu.ax & 0xff  == 1{
+                            println!("Cannot set file attributes, exiting...");
+                            emu.get_data_mut().exited = true;
+                            emu.emu_stop().unwrap();
+                            return;
+                        }
+
+                        let data = emu.mem_read_as_vec(addr, 128).unwrap();
+                        let null = data.iter().position(|byte| *byte == 0).expect("Couldn't find null termination from a string");
+                        let file_name = String::from_utf8_lossy(&data[..null]);
+                        if emu.get_data().verbose {
+                            println!("Checking for file {file_name}");
+                        }
+
+                        // we don't have a filesystem so always set the error as: 02  File not found
+                        emu.reg_write(RegisterX86::AX, 0x02).unwrap();
+                        let eflags = emu.reg_read(RegisterX86::EFLAGS).unwrap();
+                        emu.reg_write(RegisterX86::EFLAGS, eflags | 1).unwrap();
                     } else if ah == 0x44 {
                         let al = cpu.ax & 0xff;
                         if cpu.bx > 4 {
@@ -312,15 +337,17 @@ impl<'a> Engine<'a> {
                             emu.get_data_mut().exited = true;
                             emu.emu_stop().unwrap();
                         }
+                    } else if ah == 0x47 {
+                        let dst_addr = cpu.ds * 16 +  cpu.si;
+                        // always assume C: as the current path so the path is empty relative to it
+                        // ASCIIZ string make sure it's null terminated
+                        emu.mem_write(dst_addr, &[ 0]).unwrap();
                     } else if ah == 0x4a {
+                        // We'll never run out of memory so we can assume that each sector has the maximum size of 0xffff
                         // Dosbox is doing this so lets do it too for now?
-                        if cpu.ax == 0x4a01 || cpu.ax == 0x4a02 {
-                            emu.reg_write(RegisterX86::BX, 0).unwrap();
-                            emu.reg_write(RegisterX86::ES, 0xffff).unwrap();
-                            emu.reg_write(RegisterX86::DI, 0xffff).unwrap();
-                        } else {
-                            panic!("Only ax 0x4a01 and 0x4a02 are implemented for INT 21,4a");
-                        }
+                        emu.reg_write(RegisterX86::BX, 0).unwrap();
+                        emu.reg_write(RegisterX86::ES, 0xffff).unwrap();
+                        emu.reg_write(RegisterX86::DI, 0xffff).unwrap();
                     } else if ah == 0x4c {
                         let al = cpu.ax & 0xff;
                         println!("Program terminating with code '0x{al:x}', exiting...");
