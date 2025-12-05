@@ -208,7 +208,7 @@ impl<'a> Engine<'a> {
         let psp_segment = start_segment - 256;
         engine.mem_write(start_segment, program.data()).unwrap();
 
-        let psp = &PSP::new(0x0, [0x0; 5]);
+        let psp = &PSP::new(0x0, 0x0);
         let psp_data: &[u8] = psp.into();
         engine.mem_write(psp_segment, psp_data).unwrap();
 
@@ -232,10 +232,10 @@ impl<'a> Engine<'a> {
             .unwrap();
 
         engine
-            .reg_write(RegisterX86::DS, program.start() - 256)
+            .reg_write(RegisterX86::DS, psp_segment >> 4)
             .unwrap();
         engine
-            .reg_write(RegisterX86::ES, program.start() - 256)
+            .reg_write(RegisterX86::ES, psp_segment >> 4)
             .unwrap();
 
         engine

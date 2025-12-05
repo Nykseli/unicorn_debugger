@@ -164,9 +164,9 @@ pub struct PSP {
     alloc_end: u16,
     resv: u8,
     /// Far call instruction to MSDos function dispatcher
-    call_disp: [u8; 5],
+    call_disp: u8,
     /// .COM programs bytes available in segment (CP/M)
-    com_bytes: u16,
+    com_bytes: u32,
     /// Terminate address used by INT 22, we need to jump to this addr on exit
     /// This forces a child program to return to it's parent program
     term_addr: u32,
@@ -182,28 +182,42 @@ pub struct PSP {
     file_handle_array: [u8; 20],
     /// Segment address of the environment, or zero
     env_segment_addr: u16,
-    /// SS:SP of the last program that called INT 0x21,0
-    last_exit_addr: u32,
+    stack_save: u32,
     /// File handle array size
     file_handle_size: u16,
     /// File handle array pointer
     file_handle_addr: u32,
     /// Pointer to previous PSP
     prev_psp: u32,
-    spacer: [u8; 20],
+    interim_flag: u8,
+    truename_flag: u8,
+    nn_flags: u16,
+    dos_version: u16,
+    spacer: [u8; 14],
     // DOS function dispatcher CDh 21h CBh (Undoc. 3.x+) Ų
     dispatcher: [u8; 3],
     spacer_2: [u8; 9],
-    unopened_fcb_1: [u8; 36],
-    unopened_fcb_2: [u8; 20],
+    unopened_fcb_1: [u8; 16],
+    unopened_fcb_2: [u8; 16],
+    spacer_3: [u8; 4],
     cmd_trail_chars: u8,
     cmd_trail: [u8; 127],
 }
 
 impl PSP {
-    pub fn new(alloc_end: u16, call_disp: [u8; 5]) -> Self {
+    pub fn new(alloc_end: u16, call_disp: u8) -> Self {
+        let mut cmd_trail: [u8; 127] = [0x0; 127];
+        let cmd = String::from(" list");
+
+        let mut count = 0;
+        for i in cmd.as_bytes() {
+            cmd_trail[count] = *i;
+            count += 1;
+        }
+        cmd_trail[count] = 0x0D;
+
         Self {
-            exit_interrupt: 0xCD20,
+            exit_interrupt: 0x20CD,
             alloc_end,
             resv: 0x0,
             call_disp,
@@ -214,17 +228,22 @@ impl PSP {
             parent_addr: 0x0,
             file_handle_array: [0; 20],
             env_segment_addr: 0x0,
-            last_exit_addr: 0x9999_9999,
             file_handle_size: 0x0,
             file_handle_addr: 0x9999_9999,
             prev_psp: 0x0,
-            spacer: [0x0; 20],
+            spacer: [0x0; 14],
             dispatcher: [0x0; 3],
             spacer_2: [0x0; 9],
-            unopened_fcb_1: [0x0; 36],
-            unopened_fcb_2: [0x0; 20],
-            cmd_trail_chars: 0x0,
-            cmd_trail: [0x0; 127],
+            unopened_fcb_1: [0x0; 16],
+            unopened_fcb_2: [0x0; 16],
+            cmd_trail_chars: cmd.chars().count() as u8,
+            cmd_trail:  cmd_trail,
+            stack_save: 0x0,
+            interim_flag: 0x0,
+            truename_flag: 0x0,
+            nn_flags: 0x0,
+            dos_version: 0x0,
+            spacer_3: [0x0; 4],
         }
     }
 }
